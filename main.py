@@ -1,7 +1,16 @@
 import os
 import time
+import threading
 from pybit.unified_trading import HTTP
 import requests
+from flask import Flask
+
+# Инициализация веб-сервера Flask для Render
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "OI Scanner for ALL Altcoins is running!"
 
 # Переменные окружения Render
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -11,10 +20,8 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 OI_THRESHOLD_PERCENT = 2.0  # Порог роста OI (в %)
 CHECK_INTERVAL_SECONDS = 300  # Интервал проверки (5 минут)
 
-# Инициализация клиента Bybit (публичные эндпоинты)
+# Инициализация клиента Bybit
 session = HTTP(testnet=False)
-
-# Хранилище предыдущих значений OI: {"BTCUSDT": 150000.0}
 previous_oi = {}
 
 def get_all_usdt_symbols():
@@ -23,24 +30,20 @@ def get_all_usdt_symbols():
         response = session.get_instruments_info(category="linear")
         if response.get("retCode") == 0:
             list_data = response["result"]["list"]
-            # Фильтруем только торгуемые USDT контракты (исключаем USDC и контракты с датой экспирации)
             symbols = [
                 item["symbol"] for item in list_data 
                 if item["symbol"].endswith("USDT") and item["status"] == "Trading"
             ]
             print(f"📊 Загружено монет для мониторинга: {len(symbols)}")
             return symbols
-        else:
-            print(f"⚠️ Ошибка получения списка монет: {response.get('retMsg')}")
-            return []
     except Exception as e:
         print(f"❌ Ошибка запроса списка монет: {e}")
-        return []
+    return []
 
 def send_telegram_alert(symbol, oi_change, current_price):
     """Отправка алертов в Telegram"""
     message = (
-        f"🚀 <b>АНОМАЛЬНЫЙ РОСТ OI!</b>\n\n"
+        f"🚀 <b>АНОМАЛЬНЫЙ РОСТ OI (АЛЬТКОИНЫ)!</b>\n\n"
         f"🔹 <b>Монета:</b> #{symbol}\n"
         f"📈 <b>Изменение OI (5m):</b> <code>+{oi_change:.2f}%</code>\n"
         f"💵 <b>Текущая цена:</b> <code>${current_price}</code>\n\n"
@@ -54,8 +57,8 @@ def send_telegram_alert(symbol, oi_change, current_price):
         print(f"❌ Ошибка отправки в Telegram: {e}")
 
 def scanner_loop():
-    """Основной цикл сканирования всех альтам"""
-    print("🤖 Скринер запущен и запрашивает полный список монет Bybit...")
+    """Основной цикл сканирования всех альтов"""
+    print("🤖 Скринер запущен и проверяет ВСЕ альткоины...")
     
     while True:
         symbols = get_all_usdt_symbols()
@@ -65,15 +68,12 @@ def scanner_loop():
 
         for symbol in symbols:
             try:
-                # Получаем данные открытого интереса (OI)
                 oi_response = session.get_open_interest(
                     category="linear",
                     symbol=symbol,
                     intervalTime="5min",
                     limit=1
                 )
-                
-                # Получаем текущую цену
                 ticker_response = session.get_tickers(
                     category="linear",
                     symbol=symbol
@@ -92,23 +92,23 @@ def scanner_loop():
                             if prev_oi > 0:
                                 oi_change = ((current_oi - prev_oi) / prev_oi) * 100
 
-                                # Если рост OI превышает порог — шлем сигнал
                                 if oi_change >= OI_THRESHOLD_PERCENT:
                                     send_telegram_alert(symbol, oi_change, current_price)
                                     print(f"🔥 Сигнал по {symbol}: +{oi_change:.2f}%")
 
-                        # Обновляем сохраненное значение OI
                         previous_oi[symbol] = current_oi
 
-            except Exception as e:
-                # Игнорируем единичные сбои по отдельным альтам, чтобы цикл не падаль
+            except Exception:
                 continue
 
-            # Микро-пауза между запросами, чтобы API Bybit не блокировал по лимитам
-            time.sleep(0.05)
+            time.sleep(0.05) # Защита от банов по IP
 
-        print(f"✅ Проход по {len(symbols)} монетам завершен. Ожидание 5 минут...")
+        print(f"✅ Сканирование {len(symbols)} монет завершено. Ожидание 5 минут...")
         time.sleep(CHECK_INTERVAL_SECONDS)
 
+# Запуск скринера в фоновом потоке
+threading.Thread(target=scanner_loop, daemon=True).start()
+
 if __name__ == "__main__":
-    scanner_loop()
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
