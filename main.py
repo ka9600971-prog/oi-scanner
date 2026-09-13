@@ -14,7 +14,7 @@ def home():
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "SUIUSDT"]
-OI_THRESHOLD_PERCENT = 2.0
+OI_THRESHOLD_PERCENT = 0.01
 previous_oi = {}
 
 def send_telegram_alert(symbol, oi_change, current_price):
