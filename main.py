@@ -44,11 +44,14 @@ def get_bybit_market_data(symbol):
     except Exception as e:
         print(f"Ошибка данных {symbol}: {e}")
     return None, None
-
 def scanner_loop():
     print("🤖 Скринер запущен...")
+    # ТЕСТОВОЕ СООБЩЕНИЕ ПРИ СТАРТЕ
+    send_telegram_alert("BTCUSDT", 0.0, 0.0)
+    
     while True:
         for symbol in SYMBOLS:
+            # ... весь остальной код без изменений
             current_oi, current_price = get_bybit_market_data(symbol)
             if current_oi and current_price:
                 if symbol in previous_oi:
