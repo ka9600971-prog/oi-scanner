@@ -62,9 +62,6 @@ def get_bybit_market_data(symbol):
 def scanner_loop():
     print("🤖 Скринер запущен и проверяет Bybit...")
     
-    # Отправляем один тестовый пуш в Telegram при каждом перезапуске
-    send_telegram_alert("TEST_START", 0.0, 0.0)
-
     while True:
         for symbol in SYMBOLS:
             current_oi, current_price = get_bybit_market_data(symbol)
