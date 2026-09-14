@@ -55,12 +55,16 @@ def send_telegram_alert(symbol, oi_change, current_price):
         requests.post(url, json=payload, timeout=5)
     except Exception as e:
         print(f"❌ Ошибка отправки в Telegram: {e}")
-
 def scanner_loop():
     """Основной цикл сканирования всех альтов"""
     print("🤖 Скринер запущен и проверяет ВСЕ альткоины...")
     
+    # 🧪 ТЕСТОВЫЙ СИГНАЛ ПРИ СТАРТЕ
+    send_telegram_alert("TEST_BTCUSDT", 2.5, 65000.0)
+
     while True:
+        # ... весь остальной код остается без изменений ...
+
         symbols = get_all_usdt_symbols()
         if not symbols:
             time.sleep(10)
