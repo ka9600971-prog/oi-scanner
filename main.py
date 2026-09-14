@@ -17,7 +17,7 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 # Настройки скринера
-OI_THRESHOLD_PERCENT = 2.0  # Порог роста OI (в %)
+OI_THRESHOLD_PERCENT = 0.1  # Порог роста OI (в %)
 CHECK_INTERVAL_SECONDS = 300  # Интервал проверки (5 минут)
 
 # Инициализация клиента Bybit
