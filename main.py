@@ -1,62 +1,51 @@
 import os
-import time
-import threading
-from pybit.unified_trading import HTTP
 import requests
 from flask import Flask
+from pybit.unified_trading import HTTP
+from apscheduler.schedulers.background import BackgroundScheduler
 
 app = Flask(__name__)
 
-@app.route('/')
-def home():
-    return "OI Scanner is active and running 24/7!"
-
+# Переменные окружения
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-OI_THRESHOLD_PERCENT = 2.0
-CHECK_INTERVAL_SECONDS = 300  # 5 минут
-
+# Настройки
+OI_THRESHOLD_PERCENT = 0.5  # Временно поставим 0.5% для гарантированной проверки!
 session = HTTP(testnet=False)
 previous_oi = {}
 
-def get_all_usdt_symbols():
-    try:
-        response = session.get_instruments_info(category="linear")
-        if response.get("retCode") == 0:
-            return [
-                item["symbol"] for item in response["result"]["list"] 
-                if item["symbol"].endswith("USDT") and item["status"] == "Trading"
-            ]
-    except Exception as e:
-        print(f"❌ Ошибка получения списка монет: {e}")
-    return []
+@app.route('/')
+def home():
+    return f"OI Scanner Active. Tracked coins: {len(previous_oi)}"
 
 def send_telegram_alert(symbol, oi_change, current_price):
     message = (
         f"🚀 <b>АНОМАЛЬНЫЙ РОСТ OI!</b>\n\n"
         f"🔹 <b>Монета:</b> #{symbol}\n"
         f"📈 <b>Изменение OI (5m):</b> <code>+{oi_change:.2f}%</code>\n"
-        f"💵 <b>Текущая цена:</b> <code>${current_price}</code>\n\n"
-        f"💡 <i>Проверь 5M график на наличие 3 подтверждений!</i>"
+        f"💵 <b>Цена:</b> <code>${current_price}</code>\n"
     )
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
     try:
-        requests.post(url, json=payload, timeout=5)
+        requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}, timeout=5)
     except Exception as e:
-        print(f"❌ Ошибка отправки в Telegram: {e}")
+        print(f"❌ Telegram Error: {e}")
 
-def scanner_loop():
-    print("🤖 Скринер успешно запущен в фоновом режиме...")
-    
-    while True:
-        symbols = get_all_usdt_symbols()
-        if not symbols:
-            time.sleep(10)
-            continue
+def scan_market():
+    """Функция вызывается строго каждые 5 минут"""
+    print("🔄 Начинаем сканирование рынка...")
+    try:
+        response = session.get_instruments_info(category="linear")
+        if response.get("retCode") != 0:
+            return
+        
+        symbols = [
+            item["symbol"] for item in response["result"]["list"] 
+            if item["symbol"].endswith("USDT") and item["status"] == "Trading"
+        ]
 
-        alerts_sent = 0
+        alerts_count = 0
         for symbol in symbols:
             try:
                 oi_res = session.get_open_interest(category="linear", symbol=symbol, intervalTime="5min", limit=1)
@@ -76,20 +65,24 @@ def scanner_loop():
                                 oi_change = ((current_oi - prev_oi) / prev_oi) * 100
                                 if oi_change >= OI_THRESHOLD_PERCENT:
                                     send_telegram_alert(symbol, oi_change, current_price)
-                                    alerts_sent += 1
-                                    print(f"🔥 АЛЕРТ: {symbol} +{oi_change:.2f}%")
+                                    alerts_count += 1
 
                         previous_oi[symbol] = current_oi
             except Exception:
                 continue
 
-            time.sleep(0.04)
+        print(f"✅ Сканирование завершено. Монет: {len(symbols)}. Алертов: {alerts_count}")
 
-        print(f"✅ Круг завершен. Монет в базе: {len(previous_oi)}. Отправлено алертов: {alerts_sent}. Пауза 5 минут...")
-        time.sleep(CHECK_INTERVAL_SECONDS)
+    except Exception as e:
+        print(f"❌ Ошибка цикла: {e}")
 
-# Запуск фонового процесса
-threading.Thread(target=scanner_loop, daemon=True).start()
+# Запуск планировщика задач (работает стабильно в фоновом режиме)
+scheduler = BackgroundScheduler(daemon=True)
+scheduler.add_job(scan_market, 'interval', minutes=5)
+scheduler.start()
+
+# Первичный запуск при старте сервера
+scan_market()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
