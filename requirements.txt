@@ -1,5 +1,4 @@
 flask
-pybit
 requests
 gunicorn
 apscheduler
