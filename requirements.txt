@@ -1,4 +1,5 @@
-requests
-pybit
 flask
+pybit
+requests
 gunicorn
+apscheduler
