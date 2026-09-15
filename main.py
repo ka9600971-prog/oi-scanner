@@ -9,7 +9,7 @@ app = Flask(__name__)
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-OI_THRESHOLD_PERCENT = 0.5  # Тестовый порог
+OI_THRESHOLD_PERCENT = 0.5  # Тестовый порог 0.5%
 previous_oi = {}
 last_status = "Инициализация..."
 
@@ -35,18 +35,26 @@ def scan_binance_market():
     print("🔄 Сканирование Binance...")
     
     try:
-        # Один общий запрос на все пары сразу (гораздо быстрее)
-        ticker_res = requests.get("https://fapi.binance.com/fapi/v1/ticker/price", timeout=10).json()
-        usdt_pairs = [item['symbol'] for item in ticker_res if item['symbol'].endswith('USDT')]
+        # Безопасное получение списка фьючерсных символов (exchangeInfo)
+        info_res = requests.get("https://fapi.binance.com/fapi/v1/exchangeInfo", timeout=10).json()
+        
+        if "symbols" not in info_res:
+            last_status = f"Лимит запросов Binance API (Wait-limit): {info_res.get('msg', 'Unknown error')}"
+            return
+
+        usdt_pairs = [
+            s['symbol'] for s in info_res['symbols'] 
+            if s['symbol'].endswith('USDT') and s['status'] == 'TRADING'
+        ]
 
         alerts_count = 0
         success_count = 0
 
-        # Сканируем с групповым сбором
         for symbol in usdt_pairs:
             try:
                 oi_res = requests.get(f"https://fapi.binance.com/fapi/v1/openInterest?symbol={symbol}", timeout=2).json()
-                if "openInterest" in oi_res:
+                
+                if isinstance(oi_res, dict) and "openInterest" in oi_res:
                     current_oi = float(oi_res["openInterest"])
                     
                     if symbol in previous_oi:
@@ -62,21 +70,21 @@ def scan_binance_market():
             except Exception:
                 continue
             
-            time.sleep(0.01)
+            time.sleep(0.02)
 
-        last_status = f"Успешно. База обновлена. Успешных пар: {success_count}. Алертов: {alerts_count}"
+        last_status = f"Успешно! База обновлена. Монет: {success_count}. Алертов: {alerts_count}"
         print(f"✅ {last_status}")
 
     except Exception as e:
-        last_status = f"Ошибка API: {e}"
+        last_status = f"Ошибка связи: {e}"
         print(f"❌ {last_status}")
 
-# Запуск планировщика
+# Настройка планировщика
 scheduler = BackgroundScheduler(daemon=True)
 scheduler.add_job(scan_binance_market, 'interval', minutes=5)
 scheduler.start()
 
-# Запускаем один раз прямо при загрузке модуля
+# Запуск при старте
 scan_binance_market()
 
 if __name__ == "__main__":
