@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from flask import Flask
 from pybit.unified_trading import HTTP
@@ -10,14 +11,14 @@ app = Flask(__name__)
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# Настройки
-OI_THRESHOLD_PERCENT = 0.5  # Временно поставим 0.5% для гарантированной проверки!
+# Временно 0.5% для гарантированного теста отправки
+OI_THRESHOLD_PERCENT = 0.5  
 session = HTTP(testnet=False)
 previous_oi = {}
 
 @app.route('/')
 def home():
-    return f"OI Scanner Active. Tracked coins: {len(previous_oi)}"
+    return f"OI Scanner Active. Tracked coins in memory: {len(previous_oi)}"
 
 def send_telegram_alert(symbol, oi_change, current_price):
     message = (
@@ -33,11 +34,14 @@ def send_telegram_alert(symbol, oi_change, current_price):
         print(f"❌ Telegram Error: {e}")
 
 def scan_market():
-    """Функция вызывается строго каждые 5 минут"""
-    print("🔄 Начинаем сканирование рынка...")
+    """Сканирование рынка каждые 5 минут"""
+    global previous_oi
+    print("🔄 Запуск сканирования Bybit...")
+    
     try:
         response = session.get_instruments_info(category="linear")
         if response.get("retCode") != 0:
+            print(f"❌ Ошибка Bybit API: {response.get('retMsg')}")
             return
         
         symbols = [
@@ -45,7 +49,9 @@ def scan_market():
             if item["symbol"].endswith("USDT") and item["status"] == "Trading"
         ]
 
+        print(f"📊 Найдено пар: {len(symbols)}. Начинаем сбор OI...")
         alerts_count = 0
+        
         for symbol in symbols:
             try:
                 oi_res = session.get_open_interest(category="linear", symbol=symbol, intervalTime="5min", limit=1)
@@ -66,22 +72,25 @@ def scan_market():
                                 if oi_change >= OI_THRESHOLD_PERCENT:
                                     send_telegram_alert(symbol, oi_change, current_price)
                                     alerts_count += 1
+                                    print(f"🔥 АЛЕРТ: {symbol} +{oi_change:.2f}%")
 
                         previous_oi[symbol] = current_oi
             except Exception:
                 continue
 
-        print(f"✅ Сканирование завершено. Монет: {len(symbols)}. Алертов: {alerts_count}")
+            time.sleep(0.02)
+
+        print(f"✅ Сканирование завершено. Сохранено монет: {len(previous_oi)}. Алертов: {alerts_count}")
 
     except Exception as e:
-        print(f"❌ Ошибка цикла: {e}")
+        print(f"❌ Критическая ошибка цикла: {e}")
 
-# Запуск планировщика задач (работает стабильно в фоновом режиме)
+# Запуск фонового планировщика
 scheduler = BackgroundScheduler(daemon=True)
 scheduler.add_job(scan_market, 'interval', minutes=5)
 scheduler.start()
 
-# Первичный запуск при старте сервера
+# Первичная загрузка базы при старте
 scan_market()
 
 if __name__ == "__main__":
